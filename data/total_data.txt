@@ -1,6 +1,0 @@
-image_name||height||font-size||color||background-color
-image_1576217819334.png||480px||22px||rgb(153, 127, 104)||rgb(54, 182, 138)
-image_1576217819718.png||245px||14px||rgb(72, 84, 60)||rgb(225, 4, 202)
-image_1576217820084.png||300px||22px||rgb(22, 155, 233)||rgb(139, 88, 254)
-image_1576217820439.png||345px||29px||rgb(10, 195, 213)||rgb(189, 250, 64)
-image_1576217820796.png||490px||29px||rgb(64, 207, 231)||rgb(56, 209, 129)

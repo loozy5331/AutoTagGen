@@ -21,11 +21,12 @@ class AutoTagGen:
         (기능) 특정 css prop를 고정하고, 그 외의 css prop를 변경(random.choice)하여 저장
         (제한 사항) 저장형식은 2d array 형식이고, 맨 위에는 해당 column의 데이터가 저장되게 된다.       
     """
-    def __init__(self, static_css_prop_val:dict(), inner_text:str=None):
+    def __init__(self, static_css_prop_val:dict(), inner_text:str=None, gen_count:int=5):
         self.driver = self._get_driver()
         self.static_css_prop_val = static_css_prop_val                                              # 고정해야 하는 css prop
         self.dynamic_css_props = ["image_name", "height", "font-size", "color", "background-color"] # 동적으로 변경될 css prop
         self.inner_text = inner_text                                                                # tag 내의 word 변경 default로는 "test text"
+        self.gen_count = gen_count                                                                  # image를 생성할 갯수
         self.total_data_path = "data/total_data.txt"                                                # total_data.txt가 저장될 경로
         if not os.path.exists(self.total_data_path):                                                # 모든 데이터를 저장할 total_data.csv 파일 생성
             os.mknod(self.total_data_path)
@@ -57,7 +58,7 @@ class AutoTagGen:
         options.add_argument("--disable-gpu")
         options.add_argument("--start-maximized")
         options.add_argument("window-size=2560,1440")
-        driver = webdriver.Chrome("chromedriver", options=options)
+        driver = webdriver.Chrome(os.path.join(os.getcwd(), "chromedriver"), options=options)
         return driver
     
     # gen_count만큼 중복되지 않는 image 및 data를 생성.
@@ -83,10 +84,11 @@ class AutoTagGen:
 
             # total_data에 없을 때만 추가
             if not _is_in_data(height, font_size, color, bg_color):
-                image_name = f"image_{int(time.time()*1000)}.png"
+                image_name = f"img_{int(time.time()*1000)}.png"
                 temp_dict = dict()
                 self.total_data.append([image_name, f"{height}px", f"{font_size}px", f"rgb{color}", f"rgb{bg_color}"])
                 temp_dict["height"] = f"{height}px"
+                temp_dict["line-height"] = f"{height}px" # 중앙 정렬
                 temp_dict["font-size"] = f"{font_size}px"
                 temp_dict["color"] = f"rgb{color}"
                 temp_dict["background-color"] = f"rgb{bg_color}"
@@ -133,10 +135,10 @@ class AutoTagGen:
 
     def run(self):
         self.driver.get(f"file://{os.path.join(os.getcwd(), 'test_html.html')}")
-        self.tag_generator(5)
+        self.tag_generator(self.gen_count)
         self._save_total_data()
 
 if __name__ == '__main__':
-    css_prop_val = {"text-align":"left"}
-    autoTagGen = AutoTagGen(css_prop_val, inner_text="Hello world!!")
+    static_css_prop_val = {"text-align":"center", "background-color":"white"}
+    autoTagGen = AutoTagGen(static_css_prop_val=static_css_prop_val, inner_text="Hello world!!", gen_count=100)
     autoTagGen.run()
