@@ -11,6 +11,17 @@ import time
 import random
 from io import BytesIO
 
+class AutoGenStatus:
+    """
+        AutoTagGen의 status를 결정하기 위한 클래스
+        self.ver_align : 세로로 중앙 정렬 유무. line-height로 처리. defualt is True
+        self.hor_align : 가로로 중앙 정렬 유무. text-align으로 처리. default is True
+        self.inner_text: innerText로 사용할 문구. default is "hello world"
+    """
+    def __init__(self, ver_align:bool=True, hor_align:bool=True, inner_text:str="hello world"):
+        self.ver_align = ver_align
+        self.hor_align = hor_align
+        self.inner_text = inner_text
 
 class AutoTagGen:
     """
@@ -20,36 +31,60 @@ class AutoTagGen:
 
         (기능) 특정 css prop를 고정하고, 그 외의 css prop를 변경(random.choice)하여 저장
         (제한 사항) 저장형식은 2d array 형식이고, 맨 위에는 해당 column의 데이터가 저장되게 된다.       
-    """
-    def __init__(self, static_css_prop_val:dict(), inner_text:str=None, gen_count:int=5):
-        self.driver = self._get_driver()
-        self.static_css_prop_val = static_css_prop_val                                              # 고정해야 하는 css prop
-        self.dynamic_css_props = ["image_name", "height", "font-size", "color", "background-color"] # 동적으로 변경될 css prop
-        self.inner_text = inner_text                                                                # tag 내의 word 변경 default로는 "test text"
-        self.gen_count = gen_count                                                                  # image를 생성할 갯수
-        self.total_data_path = "data/total_data.txt"                                                # total_data.txt가 저장될 경로
-        if not os.path.exists(self.total_data_path):                                                # 모든 데이터를 저장할 total_data.csv 파일 생성
-            os.mknod(self.total_data_path)
-            self.total_data = list()
-        else:
-            self.total_data = self._get_total_data()
 
-    # 새로 생성한 데이터를 포함하여 total_data.txt에 저장한다.
-    def _save_total_data(self):
-        self.total_data.insert(0, self.dynamic_css_props)
-        with open(self.total_data_path, "w") as file:
-            for data in self.total_data:
-                data = "||".join(list(map(str, data))) 
-                file.write(data + "\n")
+        self.driver : selenium chrome driver
+        self.static_css_prop_val : 고정되어 사용하기 위한 css_prop_val {"css_prop":"css_value"}.     difault is dict()
+                                     ex) { "height": "2px"}
+        self.dynamic_css_props : 동적으로 할당되는 css props와 values {"css_prop": (min, max, interval) }.     difault is dict()
+                                    ex) { "height": (100, 200, 1)}
+        self.status : 기본으로 가지는 속성들
+        self.gen_count : image를 생성할 갯수/ difault is 5
+        self.total_data_dict : 전체 데이터를 가지고 있는 dictionary. 
+                                 ex) {"height":{"img_1000.png":"3px", ...}, "width":{"img_10203.png":"300px", ...}}
+    """
+    def __init__(self, dynamic_css_props:dict=dict(), static_css_prop_val:dict=dict(), status:AutoGenStatus=AutoGenStatus(), gen_count:int=5):
+        self.driver = self._get_driver()
+        self.static_css_prop_val = static_css_prop_val
+        self.dynamic_css_props = dynamic_css_props                                      
+                                                                                                                 
+        self.status = status
+        self.gen_count = gen_count
+        self.total_data_dict = self._load_data()
     
-    # 기존에 저장되어 있던 total_data를 불러온다.  
-    def _get_total_data(self):
-        total_data = None
-        with open(self.total_data_path, "r") as file:
-            total_data = file.read()
-        total_data = [data for data in total_data.split("\n") if data.strip() != ""][1:] # except first row
-        total_data = [data.split("||") for data in total_data]
-        return total_data
+    # status에 의한 초기 설정
+    def _set_status(self):
+        if self.status.inner_text:
+            self.driver.execute_script(f"document.getElementById('tag').innerText='{self.status.inner_text}';")
+        if self.status.hor_align: 
+            self.driver.execute_script(f"document.getElementById('tag').style['text-align']='center';")
+        if self.status.ver_align:
+            self.driver.execute_script(f"document.getElementById('tag').style['line-height']=document.getElementById('tag').style['height'];")
+
+    # dynamic_css_prop를 대상으로 하여 저장된 데이터들을 메모리로 올림. 없다면 새로이 생성.
+    # 파일 형식은 dict type
+    def _load_data(self):
+        temp_data_dict = dict()
+        for dynamic_css_prop in self.dynamic_css_props.keys():
+            file_path = os.path.join("data", dynamic_css_prop + ".txt")
+            if not os.path.exists(file_path):
+                os.mknod(file_path)
+                temp_data_dict[dynamic_css_prop] = dict()
+            else:
+                with open(file_path, "r") as file:
+                    contents = file.read()
+                    if contents == "":
+                        temp_data_dict[dynamic_css_prop] = dict()
+                    else:
+                        temp_data_dict[dynamic_css_prop] = eval(contents)
+        return temp_data_dict
+    
+    # 새로 추가된 데이터를 포함하여 저장.
+    def _save_data(self):
+        dyn_css_props = list(self.dynamic_css_props.keys())
+        for css_prop, data in self.total_data_dict.items():
+            file_path = os.path.join("data", css_prop + ".txt")
+            with open(file_path, "w") as file:
+                file.write(str(data))
 
     # selenium을 활용하기 위하여 driver를 불러옴.
     def _get_driver(self):
@@ -61,38 +96,46 @@ class AutoTagGen:
         driver = webdriver.Chrome(os.path.join(os.getcwd(), "chromedriver"), options=options)
         return driver
     
+    # data가 있는지 확인하기 위한 함수
+    ################# TODO######################################################################
+    def _is_in_data(self, css_prop_val:dict()):
+        for prop, val in css_prop_val.items():
+            pass
+
+    # dynamic_css_props에서 임의로 뽑은 값을 dict 형태로 반환.
+    def _choice_temp_data(self):
+        temp_css_data = dict()
+        for css_prop, val in self.dynamic_css_props.items():
+            if type(val) == tuple: # (min, max, interval)
+                (min_v, max_v, interval) = val
+                if "color" in css_prop:
+                    red = random.choice([d for d in range(min_v, max_v, interval)])
+                    green = random.choice([d for d in range(min_v, max_v, interval)])
+                    blue = random.choice([d for d in range(min_v, max_v, interval)])
+                    temp_css_data[css_prop] = f"rgb({red},{green},{blue})"
+                else:
+                    temp_css_data[css_prop] = f"{random.choice([d for d in range(min_v, max_v, interval)])}px"
+            elif type(val) == list: # ["cate1", "cate2", ...]
+                temp_css_data[css_prop] = random.choice(val)
+        return temp_css_data
+
+    # self.total_data_dict에 새로 생성한 값을 추가
+    def _append_total_data_dict(self, image_name, temp_css_dict):
+        for prop, val in temp_css_dict.items():
+            self.total_data_dict[prop][image_name] = val
+        
+
     # gen_count만큼 중복되지 않는 image 및 data를 생성.
     def tag_generator(self, gen_count):
-        def _is_in_data(height, font_size, color, bg_color):       # data가 이미 total_data에 있는지 확인하기 위한 함수
-            for data in self.total_data:
-                (_, h, f_s, c, bg_c) = data
-                if h == height and f_s == font_size and c == color and bg_c == bg_color:
-                    return True
-            return False
-
-        # 뽑을 수 있는 값의 제한선
-        height_vals = [h for h in range(100, 500, 5)]
-        font_size_vals = [f for f in range(13, 30, 1)]
-        color_vals = [c for c in range(0, 256, 1)]
-        
         while gen_count != 0:
-            # random하게 값을 뽑음.
-            height = random.choice(height_vals)
-            font_size = random.choice(font_size_vals)
-            color = (random.choice(color_vals), random.choice(color_vals), random.choice(color_vals))
-            bg_color = (random.choice(color_vals), random.choice(color_vals), random.choice(color_vals))
+            if gen_count % 100 == 0:
+                print(f"{self.gen_count - gen_count}/{self.gen_count}")
 
-            # total_data에 없을 때만 추가
-            if not _is_in_data(height, font_size, color, bg_color):
-                image_name = f"img_{int(time.time()*1000)}.png"
-                temp_dict = dict()
-                self.total_data.append([image_name, f"{height}px", f"{font_size}px", f"rgb{color}", f"rgb{bg_color}"])
-                temp_dict["height"] = f"{height}px"
-                temp_dict["line-height"] = f"{height}px" # 중앙 정렬
-                temp_dict["font-size"] = f"{font_size}px"
-                temp_dict["color"] = f"rgb{color}"
-                temp_dict["background-color"] = f"rgb{bg_color}"
-                self._capture_element(image_name, temp_dict)
+            
+            temp_css_dict = self._choice_temp_data()
+            image_name = f"img_{int(time.time()*1000)}.png"
+            self._append_total_data_dict(image_name, temp_css_dict)
+            self._capture_element(image_name, temp_css_dict)
             gen_count -= 1
     
     # selenium을 통해 css_dict에 맞게 적용된 이미지를 image_name으로 저장.
@@ -100,15 +143,17 @@ class AutoTagGen:
         image_path = os.path.join("images", image_name)
 
         _ = WebDriverWait(self.driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+
         for prop, val in css_dict.items():
             self.driver.execute_script(f"document.getElementById('tag').style['{prop}']='{val}';")
         
         for prop, val in self.static_css_prop_val.items():
             self.driver.execute_script(f"document.getElementById('tag').style['{prop}']='{val}';")
 
+        # status에 따라
+        self._set_status()
+
         element = self.driver.find_element_by_css_selector("#tag")
-        if self.inner_text:
-            self.driver.execute_script(f"document.getElementById('tag').innerText='{self.inner_text}';")
         # get element location
         location = element.location 
         size = element.size
@@ -135,10 +180,24 @@ class AutoTagGen:
 
     def run(self):
         self.driver.get(f"file://{os.path.join(os.getcwd(), 'test_html.html')}")
+        self._set_status()
         self.tag_generator(self.gen_count)
-        self._save_total_data()
+        self._save_data()
+        self.driver.quit()
 
 if __name__ == '__main__':
-    static_css_prop_val = {"text-align":"center", "background-color":"white"}
-    autoTagGen = AutoTagGen(static_css_prop_val=static_css_prop_val, inner_text="Hello world!!", gen_count=100)
+    dynamic_css_props = {
+                            "height":(100, 500, 4), 
+                            "font-size":(13, 30, 1), 
+                            "color":(0, 256, 1), 
+                            "background-color":(0, 256, 1),
+                            # "border-width":(1, 3, 1),
+                            # "border-style":["solid", "dash"],
+                            # "border-color":(0, 256, 1)
+                        }
+    static_css_prop_val = {
+                            "background-color":"white"
+                          }
+    html_status = AutoGenStatus(ver_align=True, hor_align=False, inner_text="hello world!")
+    autoTagGen = AutoTagGen(dynamic_css_props=dynamic_css_props, static_css_prop_val=static_css_prop_val, status=html_status, gen_count=1000)
     autoTagGen.run()
